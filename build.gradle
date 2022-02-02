@@ -1,0 +1,206 @@
+import org.gradle.internal.os.OperatingSystem
+
+import javax.tools.ToolProvider
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+}
+
+plugins {
+    id "java"
+    id 'maven'
+    id 'signing'
+    id 'jacoco'
+    id 'application'
+    id 'com.palantir.git-version' version '0.5.1'
+    id 'com.github.johnrengelman.shadow' version '5.1.0'
+    id "com.github.kt3k.coveralls" version '2.6.3'
+    id "org.ajoberstar.grgit" version "4.0.0-rc.1"
+    id "org.ajoberstar.git-publish" version "2.1.1"
+}
+
+mainClassName = "edu.umms.garberlab.slam.Splitter"
+
+repositories {
+    mavenCentral()
+    maven {
+        url "https://broadinstitute.jfrog.io/broadinstitute/libs-snapshot/" //for htsjdk snapshots
+    }
+    mavenLocal()
+}
+
+final buildPrerequisitesMessage = "See https://github.com/garberlab/slamTools/README.md"
+
+// Check that we're in a folder which git recognizes as a git repository.
+// This works for either a standard git clone or one created with `git worktree add`
+def looksLikeWereInAGitRepository(){
+    file(".git").isDirectory() || (file(".git").exists() && file(".git").text.startsWith("gitdir"))
+}
+
+// Ensure that we have a clone of the git repository, and resolve any required git-lfs
+// resource files that are needed to run the build but are still lfs stub files.
+def ensureBuildPrerequisites(buildPrerequisitesMessage) {
+    if (!JavaVersion.current().isJava8Compatible()) {
+        throw new GradleException(
+                "Java 8 or later is required to build Picard, but ${JavaVersion.current()} was found. "
+                        + "$buildPrerequisitesMessage")
+    }
+    // Make sure we can get a ToolProvider class loader (for Java 8). If not we may have just a JRE.
+    if (JavaVersion.current().isJava8() && ToolProvider.getSystemToolClassLoader() == null) {
+        throw new GradleException(
+                "The ClassLoader obtained from the Java ToolProvider is null. "
+                        + "If using Java 8 you must have a full JDK installed and not just a JRE. $buildPrerequisitesMessage")
+    }
+    if (!JavaVersion.current().isJava8() && !JavaVersion.current().isJava11()) {
+        println("Warning: using Java ${JavaVersion.current()} but only Java 8 and Java 11 have been tested.")
+    }
+    if (!looksLikeWereInAGitRepository()) {
+        throw new GradleException("This doesn't appear to be a git folder. " +
+                "The SlamTools Github repository must be cloned using \"git clone\" to run the build. " +
+                "\n$buildPrerequisitesMessage")
+    }
+}
+
+ensureBuildPrerequisites(buildPrerequisitesMessage)
+
+final SlamTools = System.getProperty('SlamTools.version', '0.1')
+
+// Get the jdk files we need to run javaDoc. We need to use these during compile, testCompile,
+// test execution, and gatkDoc generation, but we don't want them as part of the runtime
+// classpath and we don't want to redistribute them in the uber jar.
+final javadocJDKFiles = ToolProvider.getSystemToolClassLoader() == null ? files([]) : files(((URLClassLoader) ToolProvider.getSystemToolClassLoader()).getURLs())
+
+configurations {
+    cloudConfiguration {
+        extendsFrom runtime
+    }
+}
+
+dependencies {
+    compile('com.intel.gkl:gkl:0.8.8') {
+        exclude module: 'htsjdk'
+    }
+    compile 'com.google.guava:guava:15.0'
+    compile 'org.apache.commons:commons-math3:3.5'
+    compile 'org.apache.commons:commons-collections4:4.3'
+    compile 'commons-lang:commons-lang:2.6'
+    compile 'com.github.samtools:htsjdk:2.24.21'
+    compile 'org.broadinstitute:barclay:4.0.2'
+    compile 'org.apache.logging.log4j:log4j-api:2.17.1'
+    compile 'org.apache.logging.log4j:log4j-core:2.17.1'
+    //compileOnly(googleNio) {
+    //    transitive = false
+    //}
+
+    // javadoc utilities; compile/test only to prevent redistribution of sdk jars
+    compileOnly(javadocJDKFiles)
+    testCompile(javadocJDKFiles)
+
+    testCompile 'org.testng:testng:6.14.3'
+    testCompile 'org.apache.commons:commons-lang3:3.6'
+}
+
+//configurations.all {
+//    resolutionStrategy {
+        // force the htsjdk version so we don't get a different one transitively
+//        force 'com.github.samtools:htsjdk:' + htsjdkVersion
+//    }
+//}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+final isRelease = Boolean.getBoolean("release")
+final gitVersion = gitVersion().replaceAll(".dirty", "")
+version = isRelease ? gitVersion : gitVersion + "-SNAPSHOT"
+
+logger.info("build for version:" + version)
+group = 'edu.umms.garberlab'
+
+defaultTasks 'all'
+
+task all(dependsOn: ['jar', 'distZip', 'javadoc', 'shadowJar', 'currentJar', 'SlamToolsDoc'])
+
+tasks.withType(Jar){
+    manifest {
+        attributes 'Main-Class': 'edu.umms.garberlab.slam.Splitter',
+                'Implementation-Title': 'SlamTools',
+                'Implementation-Vendor': 'University Of Massachusetts Medical School',
+                'Implementation-Version': version
+    }
+}
+
+tasks.withType(Javadoc) {
+    // do this for all javadoc tasks, including gatkDoc
+    options.addStringOption('Xdoclint:none')
+}
+
+javadoc {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+
+task currentJar(type: Copy){
+    from shadowJar
+    into file("$buildDir/libs")
+    rename { string -> "SlamTools.jar"}
+}
+
+shadowJar {
+    finalizedBy currentJar
+}
+
+
+ wrapper {
+    gradleVersion = '5.6'
+}
+
+task javadocJar(type: Jar) {
+    archiveClassifier.set('javadoc')
+    from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    archiveClassifier.set('sources')
+}
+
+/**
+ * This specifies what artifacts will be built and uploaded when performing a maven upload.
+ */
+artifacts {
+    archives javadocJar
+    archives sourcesJar
+}
+
+/**
+ * Sign non-snapshot releases with our secret key.  This should never need to be invoked directly.
+ */
+signing {
+    required { isRelease && gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+}
+
+ext.htmlDir = file("build/docs/html")
+
+//update static web docs
+task copyJavadoc(dependsOn: 'javadoc', type: Copy) {
+    from 'build/docs/javadoc'
+    into "$htmlDir/javadoc"
+}
+
+
+updateGhPages.finalizedBy gitPublishPush
+
+gitPublish {
+    repoUri = 'git@github.com:garberlab.git/SlamTools '
+    branch = 'gh-pages'
+    preserve { include '**/*' }
+    contents { 
+        from('build/docs/html') { 
+            into 'newdocs' 
+        } 
+    }
+}
