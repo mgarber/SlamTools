@@ -10,7 +10,6 @@ buildscript {
 
 plugins {
     id "java"
-    id 'maven'
     id 'signing'
     id 'jacoco'
     id 'application'
@@ -19,9 +18,10 @@ plugins {
     id "com.github.kt3k.coveralls" version '2.6.3'
     id "org.ajoberstar.grgit" version "4.0.0-rc.1"
     id "org.ajoberstar.git-publish" version "2.1.1"
+    id 'eclipse'
 }
 
-mainClassName = "edu.umms.garberlab.slam.Splitter"
+mainClassName = "edu.umms.garberlab.slam.SlamSplitter"
 
 repositories {
     mavenCentral()
@@ -72,34 +72,27 @@ final SlamTools = System.getProperty('SlamTools.version', '0.1')
 // classpath and we don't want to redistribute them in the uber jar.
 final javadocJDKFiles = ToolProvider.getSystemToolClassLoader() == null ? files([]) : files(((URLClassLoader) ToolProvider.getSystemToolClassLoader()).getURLs())
 
-configurations {
-    cloudConfiguration {
-        extendsFrom runtime
-    }
-}
 
 dependencies {
-    compile('com.intel.gkl:gkl:0.8.8') {
-        exclude module: 'htsjdk'
-    }
-    compile 'com.google.guava:guava:15.0'
-    compile 'org.apache.commons:commons-math3:3.5'
-    compile 'org.apache.commons:commons-collections4:4.3'
-    compile 'commons-lang:commons-lang:2.6'
-    compile 'com.github.samtools:htsjdk:2.24.21'
-    compile 'org.broadinstitute:barclay:4.0.2'
-    compile 'org.apache.logging.log4j:log4j-api:2.17.1'
-    compile 'org.apache.logging.log4j:log4j-core:2.17.1'
+    implementation 'com.google.guava:guava:15.0'
+    implementation 'org.apache.commons:commons-math3:3.5'
+    implementation 'org.apache.commons:commons-collections4:4.3'
+    implementation 'commons-lang:commons-lang:2.6'
+    implementation 'com.github.samtools:htsjdk:2.24.1'
+    implementation 'org.broadinstitute:barclay:4.0.2'
+    implementation 'org.apache.logging.log4j:log4j-api:2.17.1'
+    implementation 'org.apache.logging.log4j:log4j-core:2.17.1'
+    implementation 'commons-cli:commons-cli:1.5.0'
     //compileOnly(googleNio) {
     //    transitive = false
     //}
 
     // javadoc utilities; compile/test only to prevent redistribution of sdk jars
     compileOnly(javadocJDKFiles)
-    testCompile(javadocJDKFiles)
+    testImplementation(javadocJDKFiles)
 
-    testCompile 'org.testng:testng:6.14.3'
-    testCompile 'org.apache.commons:commons-lang3:3.6'
+    testImplementation 'org.testng:testng:6.14.3'
+    testImplementation 'org.apache.commons:commons-lang3:3.6'
 }
 
 //configurations.all {
@@ -121,16 +114,17 @@ group = 'edu.umms.garberlab'
 
 defaultTasks 'all'
 
-task all(dependsOn: ['jar', 'distZip', 'javadoc', 'shadowJar', 'currentJar', 'SlamToolsDoc'])
+task all(dependsOn: ['jar', 'distZip', 'javadoc', 'shadowJar', 'currentJar'])
 
 tasks.withType(Jar){
     manifest {
-        attributes 'Main-Class': 'edu.umms.garberlab.slam.Splitter',
+        attributes 'Main-Class': 'edu.umms.garberlab.slam.SlamSplitter',
                 'Implementation-Title': 'SlamTools',
                 'Implementation-Vendor': 'University Of Massachusetts Medical School',
                 'Implementation-Version': version
     }
 }
+
 
 tasks.withType(Javadoc) {
     // do this for all javadoc tasks, including gatkDoc
@@ -154,7 +148,7 @@ shadowJar {
 
 
  wrapper {
-    gradleVersion = '5.6'
+    gradleVersion = '7.3'
 }
 
 task javadocJar(type: Jar) {
@@ -191,16 +185,3 @@ task copyJavadoc(dependsOn: 'javadoc', type: Copy) {
     into "$htmlDir/javadoc"
 }
 
-
-updateGhPages.finalizedBy gitPublishPush
-
-gitPublish {
-    repoUri = 'git@github.com:garberlab.git/SlamTools '
-    branch = 'gh-pages'
-    preserve { include '**/*' }
-    contents { 
-        from('build/docs/html') { 
-            into 'newdocs' 
-        } 
-    }
-}
