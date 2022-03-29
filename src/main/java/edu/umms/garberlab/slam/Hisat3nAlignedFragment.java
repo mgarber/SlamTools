@@ -51,8 +51,7 @@ public class Hisat3nAlignedFragment {
 	 		if(mateSamRecord == null) {
 	 			System.err.println("ERROR: mate had a non-zero alignment start but queryMate returned null\n" + hisatRecord.getSAMRecord().format());
 	 		}
-	 		Hisat3nSAMRecord mate = new Hisat3nSAMRecord(pairQueryReader.queryMate(hisatRecord.getSAMRecord()));
-
+	 		Hisat3nSAMRecord mate = new Hisat3nSAMRecord(mateSamRecord);
 	 		if(mate.getSAMRecord().getFirstOfPairFlag()) {
 	 			pair1 = mate;
 	 			pair2 = hisatRecord;
@@ -65,6 +64,24 @@ public class Hisat3nAlignedFragment {
 	 		pair1 = hisatRecord;
 	 		convertedBases = pair1.countConvertedBases();
 	 	}
+	}
+	
+	public Hisat3nAlignedFragment(SAMRecord rec1, SAMRecord rec2) {
+		libraryFragmentLengthMean = DEFAULT_FRAGMENT_SIZE;
+		libraryFragmentLengthStdDev = DEFAULT_FRAGMENT_SIZE_SD;
+		Hisat3nSAMRecord hisatRec1 = new Hisat3nSAMRecord(rec1);
+		Hisat3nSAMRecord hisatRec2 = new Hisat3nSAMRecord(rec2);
+
+		if(rec1.getFirstOfPairFlag()) {
+			pair1 = hisatRec1;
+			pair2 = hisatRec2;
+		} else {
+			pair1 = hisatRec2;
+			pair2 = hisatRec1;
+		}
+		
+		convertedBases = pair1.countConvertedBases()+pair2.countConvertedBases();
+
 	}
 
 	public Hisat3nSAMRecord getPair1() {
