@@ -226,101 +226,6 @@ public class Hisat3nSAMRecord implements Serializable{
 	}
 
 
-	public void revertConvertedBases2() {
-		Cigar cigar = samRecord.getCigar();
-		if(samRecord.getReadUnmappedFlag()) {
-			return;
-		}
-		byte [] readBases = samRecord.getReadBases();
-		String read =samRecord.getReadString();
-		char strand = getYzTag();
-		String matchInfo = getMdTag();
-		char convertToBaseType = '+' == strand ? 'T' : 'A';
-		char convertedToBase     = '+' == strand ? 'C' : 'G';
-		byte convertedToBaseByte = (byte) convertedToBase;
-		
-		int idx = 0;
-		this.cigarIdx = 0;
-		//Looking for soft clipped bases
-		//CigarElement first = this.cigarElntIterator.next();
-		CigarElement first = this.samRecord.getCigar().getCigarElement(this.cigarElementArrayIdx);
-		this.cigarElementArrayIdx = this.cigarElementArrayIdx + 1;
-		if (first.getOperator().equals(CigarOperator.S)) {
-			idx = idx + first.getLength();
-			//I am assuming that only matches can follow clipped bases. The cigar idx only advances on matches not insertions.
-			//this.cigarIdx = first.getLength() + this.cigarElntIterator.next().getLength();	
-			this.cigarIdx = first.getLength() +  
-					this.samRecord.getCigar().getCigarElement(this.cigarElementArrayIdx).getLength();
-		} else {
-			this.cigarIdx = first.getLength();
-		}
-		
-		
-		// Now walk through the MD
-		Matcher matcher = MDBlockPattern.matcher(matchInfo);
-		short revertedBases = 0;
-		while(matcher.find()) {
-			String match = matcher.group();
-			if(match.contains("^")) { 
-				String [] deletionInfo = match.split("\\^");
-				int numOfPreviousMatches = Integer.parseInt(deletionInfo[0]);
-				//int lengthOfInsertion = deletionInfo[1].length();
-				idx = incrementReadIdx(idx, numOfPreviousMatches); //Ignore the reference insertion, it does no affect the read idx
-			} else {
-				int blockLength = Integer.parseInt(match.substring(0, match.length() - 1));
-				idx = incrementReadIdx(idx , blockLength);
-				char mismatchCharacter = match.charAt(match.length() - 1);
-				if(mismatchCharacter == convertToBaseType  && readBases[idx] == convertedToBaseByte) {
-					readBases[idx] = (byte) mismatchCharacter;
-					revertedBases++;
-				}
-				idx = incrementReadIdx(idx,1); //This one is for the actual base that was converted regardless of whether or not the base needed to be reverted
-			}			
-		}
-
-		if(revertedBases != getYfTag()) {
-			
-			System.err.println("BUG: - reverted bases mismatch\n"+samRecord.format());
-			throw new RuntimeException("BUG: Reverted "+revertedBases +" when there were "+countConvertedBases()+" bases converted ");
-		}
-		samRecord.setReadBases(readBases);				
-	}
-
-
-	
-	private int incrementReadIdx(int idx, 
-			int numOfPreviousMatches) {
-		
-		idx = idx+numOfPreviousMatches;
-		
-		//this is tricky. if an I occurs we need to move the cigar index again. so it would move twice, hence the while
-		//while(this.cigarIdx <= idx && this.cigarElntIterator.hasNext()) { 
-		while(this.cigarIdx <= idx && cigarElementArrayIdx < getSAMRecord().getCigar().getCigarElements().size()) {
-			//CigarElement elmnt = this.cigarElntIterator.next(); 
-			CigarElement elmnt = samRecord.getCigar().getCigarElement(cigarElementArrayIdx);
-			cigarElementArrayIdx=cigarElementArrayIdx+1;
-		
-			CigarOperator elmntOp = elmnt.getOperator();
-
-			//Need to handle hard clipped, X and other operators
-			switch (elmntOp) {
-			case I:
-				idx = idx + elmnt.getLength();
-				break;
-			case M:
-				this.cigarIdx = cigarIdx + elmnt.getLength();
-				break;
-			case N:
-			case D:
-			default:
-				break;
-			}			
-		}
-		
-		return idx;
-	}
-
-
 	public SAMRecord getSAMRecord() {
 		return this.samRecord;
 	}
@@ -329,8 +234,6 @@ public class Hisat3nSAMRecord implements Serializable{
 		return ! this.samRecord.getReadUnmappedFlag();
 	}
 	
-	
-
 	protected static Map<Integer, Character> makeSequenceToReferenceMap (Cigar cigar, String mdTag) {
 		Map<Integer, Character> queryMismatch = new HashMap<Integer, Character>();
 		Iterator<CigarElement>  cigarElmntIt = cigar.iterator();
@@ -385,10 +288,12 @@ public class Hisat3nSAMRecord implements Serializable{
 			}
 
 			for (int i = 0; i < blockLength; i++) {
-				if(queryIdx == cigarCummulativeWalk && cigarElmntIt.hasNext()) {
+				if(queryIdx == cigarCummulativeWalk && cigarElmntIt.hasNext()) { 
 					cigarElement =  cigarElmntIt.next();
 					co = cigarElement.getOperator();				
 
+					//The order of these two if statements is critical. Reversing them results in
+					//skipping of a query insertion when it immediately follows a reference insertion
 
 					if(co.equals(CigarOperator.D) || co.equals(CigarOperator.N)) {
 						cigarElement = cigarElmntIt.next(); // After a reference insertion there must be another element;

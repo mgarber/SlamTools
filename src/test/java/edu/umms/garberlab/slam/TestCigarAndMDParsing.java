@@ -71,7 +71,7 @@ class TestCigarAndMDParsing {
 	void testTheLessThanPeskyBug() {
 
 		String cigarString = "40M1I39M";
-		String mdTag       = "34T5T0C1N34T0";
+		String mdTag       = "34T5T0C1N34T0"; 
 
 		
 		Cigar cigar = buildCigarFromString(cigarString);
@@ -99,6 +99,52 @@ class TestCigarAndMDParsing {
 		
 		assertTrue(mismatchMap.containsKey(79),"T-->C mismatch at position 79 was not even there");
 		assertEquals(mismatchMap.get(79),'T', "Mismatch at position 79 was not what was expected");
+		
+		
+		
+	}
+	
+	@Test
+	void testQueryInsfollowingRefIns() {
+
+		String cigarString = "65M54677N1I14M";
+		String mdTag       = "29A32C0G0C0A0A4A5A1"; 
+
+		
+		Cigar cigar = buildCigarFromString(cigarString);
+		
+		assertEquals(cigarString, cigar.toString(), "Cigar object and cigar string are not the same");
+		
+		Map<Integer, Character> mismatchMap = Hisat3nSAMRecord.makeSequenceToReferenceMap(cigar, mdTag);
+		
+		System.out.println(mismatchMap.toString());
+		
+		assertTrue(mismatchMap.containsKey(29),"A-->G mismatch at position 29 was not even there");
+		assertEquals(mismatchMap.get(29),'A', "Mismatch at position 29 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(62),"C-->T mismatch at position 62 was not even there");
+		assertEquals(mismatchMap.get(62),'C', "Mismatch at position 62 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(63),"G-->A mismatch at position 63 was not even there");
+		assertEquals(mismatchMap.get(63),'G', "Mismatch at position 63 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(64),"C-->T mismatch at position 64 was not even there");
+		assertEquals(mismatchMap.get(64),'C', "Mismatch at position 64 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(65),"Insertion at position 65 was not recorded ");
+		assertEquals(mismatchMap.get(65),'-', "Position 65 was recorded as a mismatch but not as an insertion");
+		
+		assertTrue(mismatchMap.containsKey(66),"A-->G mismatch at position 66 was not even there");
+		assertEquals(mismatchMap.get(66),'A', "Mismatch at position 66 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(67),"A-->G mismatch at position 67 was not even there");
+		assertEquals(mismatchMap.get(67),'A', "Mismatch at position 67 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(72),"A-->G mismatch at position 70 was not even there");
+		assertEquals(mismatchMap.get(72),'A', "Mismatch at position 70 was not what was expected");
+		
+		assertTrue(mismatchMap.containsKey(78),"A-->G mismatch at position 78 was not even there");
+		assertEquals(mismatchMap.get(78),'A', "Mismatch at position 78 was not what was expected");
 		
 		
 		

@@ -3,6 +3,8 @@ package edu.umms.garberlab.slam;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMFileWriter;
@@ -13,9 +15,7 @@ import htsjdk.samtools.SamReader;
 
 public class Hisat3nQuerySortedSlamSplitterWritter extends Hisat3nSplitterWriter {
 	private String unconvertedFilePath;
-	private String unconvertedFileIdxPath;
 	private String convertedFilePath;
-	private String convertedFileIdxPath;
 	
 	private SAMFileWriter unconvertedWriter;
 	private SAMFileWriter convertedWriter;
@@ -27,13 +27,10 @@ public class Hisat3nQuerySortedSlamSplitterWritter extends Hisat3nSplitterWriter
 	//NS500602:968:H7FMMBGXC:1:11101:1041:15222 1:N:0:AAGTCCAA        77      *       0       0       *       *       0       0       GCCGGGATTCGGCGAAAGCTGCGGCCGGAGGGCTGTAACACTCGGGGTGAGGTGGTCCGGCGCGCCCTGAGACGCGCAGA        AAAAAEEEEEEEEEEAEEEEEEEEE<AEEEE
 	//NS500602:968:H7FMMBGXC:1:11101:1041:15222 2:N:0:AAGTCCAA        141     *       0       0       *       *       0       0       NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
 	//
-	private boolean ignoreUnmappedPairs = true; 
 	
 	public Hisat3nQuerySortedSlamSplitterWritter(File outDirFile, String outPrefix, SamReader reader, boolean asBAM) {
 		this.unconvertedFilePath = outDirFile.getAbsolutePath() + "/" + outPrefix + "_unconverted.bam";
-		this.unconvertedFileIdxPath = outDirFile.getAbsolutePath() + "/" + outPrefix + "_unconverted.bai";
 		this.convertedFilePath = outDirFile.getAbsolutePath() + "/" + outPrefix + "_converted.bam";
-		this.convertedFileIdxPath = outDirFile.getAbsolutePath()+ "/" + outPrefix + "_converted.bai";
 		
 		currentPairList = new ArrayList<SAMRecord>();
 		
@@ -61,7 +58,7 @@ public class Hisat3nQuerySortedSlamSplitterWritter extends Hisat3nSplitterWriter
 		}
 		unconvertedWriter.close();
 		convertedWriter.close();
-
+ 
 	}
 
 	public void write(SAMRecord samRecord) {
@@ -70,11 +67,12 @@ public class Hisat3nQuerySortedSlamSplitterWritter extends Hisat3nSplitterWriter
 		//NS500602:968:H7FMMBGXC:1:11101:1041:15222 1:N:0:AAGTCCAA        77      *       0       0       *       *       0       0       GCCGGGATTCGGCGAAAGCTGCGGCCGGAGGGCTGTAACACTCGGGGTGAGGTGGTCCGGCGCGCCCTGAGACGCGCAGA        AAAAAEEEEEEEEEEAEEEEEEEEE<AEEEE
 		//NS500602:968:H7FMMBGXC:1:11101:1041:15222 2:N:0:AAGTCCAA        141     *       0       0       *       *       0       0       NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
 		
-		if(ignoreUnmappedPairs && samRecord.getMateUnmappedFlag() && samRecord.getReadUnmappedFlag()) {
-			currentPairList.clear();
+		if(!isWriteUnmapped() && samRecord.getMateUnmappedFlag() && samRecord.getReadUnmappedFlag()) {
+			//currentPairList.clear();
 			return; // Just ignore them
 		}
-		if(currentPairList.isEmpty() || currentPairList.get(0).getReadName().equals(samRecord.getReadName())) {
+		
+		if(currentPairList.isEmpty() || readNamesMatch(currentPairList.get(0), samRecord)) {
 			currentPairList.add(samRecord);
 		} else {
 			processPairList();
@@ -85,6 +83,7 @@ public class Hisat3nQuerySortedSlamSplitterWritter extends Hisat3nSplitterWriter
 	}
 
 	
+
 	public void write(Hisat3nAlignedFragment hisatAlignmentFragment) {
 		if(!isPairedEnd() ||  hisatAlignmentFragment.isUnpaired()) {
 			write(hisatAlignmentFragment.getPair1(), hisatAlignmentFragment.getConvertedBases()>0);
@@ -114,7 +113,7 @@ public class Hisat3nQuerySortedSlamSplitterWritter extends Hisat3nSplitterWriter
 		if(currentPairList.size() % 2 != 0) {
 			System.err.println("ERROR: Found a list that is supposed to contain read pairs with odd size: " + currentPairList.size() + " reads: ");
 			for (SAMRecord r : currentPairList) {
-				System.err.println(r.format());
+				System.err.println(r.toString());
 			}
 			System.exit(1);
 		}

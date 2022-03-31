@@ -24,6 +24,9 @@
 
 package edu.umms.garberlab.slam;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import htsjdk.samtools.SAMRecord;
 
 /**
@@ -34,10 +37,14 @@ import htsjdk.samtools.SAMRecord;
 	
 	private boolean revertConversion;
 	private boolean isPairedEnd;
+	private boolean writeUnmapped;
 
 	abstract public void close();
 	abstract public void write(SAMRecord samRecord);
 	abstract public void write(Hisat3nAlignedFragment hisatAlignmentFragment);
+	
+	
+	private static final Pattern ReadNameWithSpace = Pattern.compile(" +.*");
 		
 	public void turnOnConversionReversion() {
 		this.revertConversion = true;
@@ -57,6 +64,29 @@ import htsjdk.samtools.SAMRecord;
 
 	public boolean isPairedEnd() {
 		return this.isPairedEnd ;
+	}
+	public  void setWriteUnmapped(boolean writeUnmapped) {
+		this.writeUnmapped = writeUnmapped;
+	}
+	public boolean isWriteUnmapped() {
+		return writeUnmapped;
+	}
+	
+	protected static boolean readNamesMatch(SAMRecord samRecord, SAMRecord samRecord2) {
+		return readNamesMatch(samRecord.getReadName(), samRecord2.getReadName());
+	}
+	
+	protected static boolean readNamesMatch(String samRecordReadName1, String samRecordReadName2) {
+		
+		if (samRecordReadName1.contains(" ") && samRecordReadName2.contains(" ")) {
+			Matcher r1m = ReadNameWithSpace.matcher(samRecordReadName1);
+			samRecordReadName1 = r1m.replaceAll("");
+			
+			Matcher r2m = ReadNameWithSpace.matcher(samRecordReadName2);
+			samRecordReadName2 = r2m.replaceAll("");
+			
+		}
+		return samRecordReadName1.equals(samRecordReadName2);
 	}
 
 }
